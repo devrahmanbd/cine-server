@@ -1,0 +1,7 @@
+# Live state — never committed (brand DB holds admin hashes, addon state;
+# uploads hold user files).
+data/
+*.log
+.DS_Store
+# Platform node binary (use system node >= 22).
+node
