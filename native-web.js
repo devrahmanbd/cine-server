@@ -11,17 +11,69 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 function proxy(req, res, targetPort, prefix) {
     let targetPath = prefix ? req.url.replace(prefix, '') : req.url;
     if (!targetPath.startsWith('/')) targetPath = '/' + targetPath;
+    const isStreaming = targetPort === 11470;
+    const FIRST_BYTE_MS = 20000;
+    const IDLE_MS = 60000;
+    let settled = false;
+    let firstByteTimer = null;
+    let idleTimer = null;
+    const clearTimers = () => {
+        if (firstByteTimer) clearTimeout(firstByteTimer);
+        if (idleTimer) clearTimeout(idleTimer);
+        firstByteTimer = null;
+        idleTimer = null;
+    };
+    const fail = () => {
+        if (settled || res.writableEnded) return;
+        settled = true;
+        clearTimers();
+        try { proxyReq.destroy(); } catch (_) {}
+        try { if (proxyRes) proxyRes.destroy(); } catch (_) {}
+        if (!res.headersSent) {
+            res.writeHead(502, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'upstream failed' }));
+        } else {
+            try { res.destroy(); } catch (_) {}
+        }
+    };
+    let proxyRes = null;
+    const resetIdle = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(fail, IDLE_MS);
+    };
     const proxyReq = http.request(
         { host: '127.0.0.1', port: targetPort, path: targetPath, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${targetPort}` } },
-        (proxyRes) => {
-            res.writeHead(proxyRes.statusCode, proxyRes.headers);
-            proxyRes.pipe(res);
+        (upRes) => {
+            proxyRes = upRes;
+            if (firstByteTimer) clearTimeout(firstByteTimer);
+            firstByteTimer = null;
+            if (isStreaming && upRes.statusCode >= 500) {
+                clearTimers();
+                try { upRes.destroy(); } catch (_) {}
+                fail();
+                return;
+            }
+            if (isStreaming) resetIdle();
+            res.writeHead(upRes.statusCode, upRes.headers);
+            if (isStreaming) {
+                upRes.on('data', resetIdle);
+                upRes.on('end', clearTimers);
+            }
+            upRes.pipe(res);
+            upRes.on('error', fail);
         }
     );
+    if (isStreaming) firstByteTimer = setTimeout(fail, FIRST_BYTE_MS);
     proxyReq.on('error', () => {
-        res.writeHead(502, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: 'upstream unavailable' }));
+        if (!settled && !isStreaming) {
+            res.writeHead(502, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'upstream unavailable' }));
+            return;
+        }
+        fail();
     });
+    proxyReq.on('timeout', fail);
+    req.on('aborted', () => { clearTimers(); try { proxyReq.destroy(); } catch (_) {} });
     req.pipe(proxyReq);
 }
 
