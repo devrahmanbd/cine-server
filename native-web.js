@@ -5,7 +5,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const BUILD = '/Users/rahman/Documents/stremio-linux/build';
+const BUILD = process.env.BUILD_DIR || path.join(__dirname, '..', 'stremio-linux', 'build');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.map': 'application/json', '.webmanifest': 'application/manifest+json', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.mp4': 'video/mp4' };
 
 function proxy(req, res, targetPort, prefix) {
