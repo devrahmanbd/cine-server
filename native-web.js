@@ -57,8 +57,29 @@ function proxy(req, res, targetPort, prefix) {
         if (idleTimer) clearTimeout(idleTimer);
         idleTimer = setTimeout(fail, IDLE_MS);
     };
+    const outboundHeaders = { ...req.headers, host: `127.0.0.1:${targetPort}` };
+    const MAX_CHUNK_BYTES = 32 * 1024 * 1024; // 32MB safe chunk limit
+
+    if (isStreaming) {
+        const rawRange = outboundHeaders['range'] || outboundHeaders['Range'];
+        if (rawRange) {
+            const m = String(rawRange).match(/^bytes=(\d+)-(\d+)?$/i);
+            if (m) {
+                const start = parseInt(m[1], 10);
+                const end = m[2] ? parseInt(m[2], 10) : undefined;
+                if (end === undefined || (end - start + 1) > MAX_CHUNK_BYTES) {
+                    const clampedEnd = start + MAX_CHUNK_BYTES - 1;
+                    outboundHeaders['range'] = `bytes=${start}-${clampedEnd}`;
+                    delete outboundHeaders['Range'];
+                }
+            }
+        } else if (req.method === 'GET' && /^\/[a-f0-9]{40}\/\d+/i.test(targetPath)) {
+            outboundHeaders['range'] = `bytes=0-${MAX_CHUNK_BYTES - 1}`;
+        }
+    }
+
     const proxyReq = http.request(
-        { host: '127.0.0.1', port: targetPort, path: targetPath, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${targetPort}` } },
+        { host: '127.0.0.1', port: targetPort, path: targetPath, method: req.method, headers: outboundHeaders },
         (upRes) => {
             proxyRes = upRes;
             if (firstByteTimer) clearTimeout(firstByteTimer);
@@ -70,7 +91,11 @@ function proxy(req, res, targetPort, prefix) {
                 return;
             }
             if (isStreaming) resetIdle();
-            res.writeHead(upRes.statusCode, upRes.headers);
+            const headers = { ...upRes.headers };
+            if (req.method === 'HEAD' && headers['content-length'] && parseInt(headers['content-length'], 10) > MAX_CHUNK_BYTES) {
+                delete headers['content-length'];
+            }
+            res.writeHead(upRes.statusCode, headers);
             if (isStreaming) {
                 upRes.on('data', resetIdle);
                 upRes.on('end', clearTimers);
