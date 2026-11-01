@@ -382,6 +382,13 @@ const server = http.createServer((req, res) => {
         return proxy(req, res, 11470, '');
     }
     if (/^\/[a-f0-9]{40}\b/i.test(pathname)) {
+        let staticFile = path.join(BUILD, decodeURIComponent(pathname));
+        try {
+            if (fs.existsSync(staticFile) && fs.statSync(staticFile).isFile()) {
+                res.writeHead(200, { 'content-type': TYPES[path.extname(staticFile)] || 'application/octet-stream' });
+                return fs.createReadStream(staticFile).pipe(res);
+            }
+        } catch (_) {}
         return proxy(req, res, 11470, '');
     }
 
