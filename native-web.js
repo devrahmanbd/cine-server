@@ -10,6 +10,7 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 
 function proxy(req, res, targetPort, prefix) {
     let targetPath = prefix ? req.url.replace(prefix, '') : req.url;
+    targetPath = targetPath.replace(/^\/+/, '/');
     if (!targetPath.startsWith('/')) targetPath = '/' + targetPath;
     const isStreaming = targetPort === 11470;
     const FIRST_BYTE_MS = 20000;
@@ -86,7 +87,10 @@ const server = http.createServer((req, res) => {
     if (pathname.startsWith('/streaming/') || pathname === '/streaming') {
         return proxy(req, res, 11470, '/streaming');
     }
-    if (/^\/(hlsv2|hls|mp4|subtitles)\//.test(pathname)) {
+    if (/^\/(hlsv2|hls|mp4|subtitles|subtitleSignature|subtitles\.vtt|opensubHash)(\/|\?|$)/.test(pathname)) {
+        return proxy(req, res, 11470, '');
+    }
+    if (/^\/[a-f0-9]{40}\b/i.test(pathname)) {
         return proxy(req, res, 11470, '');
     }
     let file = path.join(BUILD, decodeURIComponent(pathname));
