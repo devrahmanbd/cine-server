@@ -8,10 +8,25 @@ const path = require('node:path');
 const BUILD = process.env.BUILD_DIR || path.join(__dirname, '..', 'stremio-linux', 'build');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.map': 'application/json', '.webmanifest': 'application/manifest+json', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.mp4': 'video/mp4' };
 
+function rewriteMediaUrl(rawUrl) {
+    if (!rawUrl.includes('mediaURL=') && !rawUrl.includes('videoUrl=')) return rawUrl;
+    return rawUrl.replace(/(mediaURL|videoUrl)=([^&]+)/g, (match, paramName, encodedVal) => {
+        try {
+            let decoded = decodeURIComponent(encodedVal);
+            decoded = decoded.replace(/([^:])\/\/+/g, '$1/');
+            decoded = decoded.replace(/^https?:\/\/[^/]+\/streaming(\/|$)/i, 'http://127.0.0.1:11470/');
+            return `${paramName}=${encodeURIComponent(decoded)}`;
+        } catch {
+            return match;
+        }
+    });
+}
+
 function proxy(req, res, targetPort, prefix) {
     let targetPath = prefix ? req.url.replace(prefix, '') : req.url;
     targetPath = targetPath.replace(/^\/+/, '/');
     if (!targetPath.startsWith('/')) targetPath = '/' + targetPath;
+    targetPath = rewriteMediaUrl(targetPath);
     const isStreaming = targetPort === 11470;
     const FIRST_BYTE_MS = 20000;
     const IDLE_MS = 60000;
