@@ -91,6 +91,26 @@ function proxy(req, res, targetPort, prefix) {
                 return;
             }
             if (isStreaming) resetIdle();
+            if (targetPath.split('?')[0] === '/settings') {
+                const chunks = [];
+                upRes.on('data', (chunk) => chunks.push(chunk));
+                upRes.on('end', () => {
+                    clearTimers();
+                    let body = Buffer.concat(chunks).toString('utf8');
+                    try {
+                        const parsed = JSON.parse(body);
+                        const host = req.headers['x-forwarded-host'] || req.headers.host || 'cinemavilla.cc';
+                        const proto = req.headers['x-forwarded-proto'] || 'https';
+                        parsed.baseUrl = `${proto}://${host}`;
+                        body = JSON.stringify(parsed);
+                    } catch (_) {}
+                    const outHeaders = { ...upRes.headers, 'content-length': Buffer.byteLength(body), 'content-type': 'application/json' };
+                    delete outHeaders['transfer-encoding'];
+                    res.writeHead(upRes.statusCode, outHeaders);
+                    res.end(body);
+                });
+                return;
+            }
             const headers = { ...upRes.headers };
             if (req.method === 'HEAD' && headers['content-length'] && parseInt(headers['content-length'], 10) > MAX_CHUNK_BYTES) {
                 delete headers['content-length'];
@@ -127,7 +147,7 @@ const server = http.createServer((req, res) => {
     if (pathname.startsWith('/streaming/') || pathname === '/streaming') {
         return proxy(req, res, 11470, '/streaming');
     }
-    if (/^\/(hlsv2|hls|mp4|subtitles|subtitleSignature|subtitles\.vtt|opensubHash)(\/|\?|$)/.test(pathname)) {
+    if (/^\/(hlsv2|hls|mp4|subtitles|subtitleSignature|subtitles\.vtt|opensubHash|settings|network-info|device-info|stats)(\/|\?|$)/.test(pathname)) {
         return proxy(req, res, 11470, '');
     }
     if (/^\/[a-f0-9]{40}\b/i.test(pathname)) {
