@@ -288,6 +288,7 @@ async function serveMoviePage(req, res, type, id) {
         const genres = Array.isArray(meta.genres) ? meta.genres : [];
         const cast = Array.isArray(meta.cast) ? meta.cast : [];
         const director = Array.isArray(meta.director) ? meta.director : [];
+        const rating = meta.imdbRating || '';
         const siteName = process.env.SITE_NAME || (host.toLowerCase().includes('djmaza') ? 'DJMaza' : 'Cinemavilla');
         const titleStr = `${name} ${year ? `(${year}) ` : ''}- Watch on ${siteName}`;
 
@@ -397,7 +398,12 @@ const server = http.createServer((req, res) => {
         const rawType = movieMatch[1].toLowerCase();
         const type = rawType.includes('series') ? 'series' : 'movie';
         const id = movieMatch[2];
-        return serveMoviePage(req, res, type, id);
+        return serveMoviePage(req, res, type, id).catch((err) => {
+            console.error('serveMoviePage error:', err);
+            const serve = path.join(BUILD, 'index.html');
+            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+            fs.createReadStream(serve).pipe(res);
+        });
     }
 
     let file = path.join(BUILD, decodeURIComponent(pathname));
