@@ -288,8 +288,8 @@ async function serveMoviePage(req, res, type, id) {
         const genres = Array.isArray(meta.genres) ? meta.genres : [];
         const cast = Array.isArray(meta.cast) ? meta.cast : [];
         const director = Array.isArray(meta.director) ? meta.director : [];
-        const rating = meta.imdbRating || '';
-        const titleStr = `${name} ${year ? `(${year}) ` : ''}- Watch on Cinemavilla`;
+        const siteName = process.env.SITE_NAME || (host.toLowerCase().includes('djmaza') ? 'DJMaza' : 'Cinemavilla');
+        const titleStr = `${name} ${year ? `(${year}) ` : ''}- Watch on ${siteName}`;
 
         html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtml(titleStr)}</title>`);
         html = html.replace(/<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i, `<meta name="description" content="${escapeHtml(overview.slice(0, 250))}" />`);
